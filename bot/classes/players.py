@@ -8,7 +8,7 @@ import modules.config as cfg
 from modules.asynchttp import request as httpRequest
 from modules.exceptions import UnexpectedError, ElementNotFound, StatusNotAllowed, CharNotFound, CharInvalidWorld, CharMissingFaction, CharAlreadyExists
 from modules.enumerations import PlayerStatus
-from discord.ext import tasks
+from lib import tasks
 
 WORLD_ID = 19 # Jaeger ID
 
@@ -204,11 +204,8 @@ class Player():
                 _namesChecking[i][self._igIds[i]] = self
         return updated
 
-    @tasks.loop(minutes=cfg.AFK_TIME, count=2)
+    @tasks.loop(minutes=cfg.AFK_TIME,delay=1, count=2)
     async def onInactive(self, fct): # when inactive for cfg.AFK_TIME, execute fct
-        if self.onInactive.hasJustBecome:
-            self.onInactive.hasJustBecome = False
-            return
         await fct(self)
 
 

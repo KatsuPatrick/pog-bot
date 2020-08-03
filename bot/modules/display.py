@@ -381,6 +381,7 @@ class _StringEnum(Enum):
     MATCH_ROUND_OVER = _Message("{}\n{}\nRound {} is over!")
     MATCH_OVER = _Message("The match is over!\nClearing channel...")
     MATCH_ALREADY = _Message("The match is already started!")
+    MATCH_SWAP = _Message("Swap sundy placement for the next round!")
 
     MAP_HELP = _Message("Here is how to choose a map:", embed = _mapHelp)
     MAP_TOO_MUCH = _Message("Too many maps found! Try to be more precise")
