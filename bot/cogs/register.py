@@ -7,8 +7,9 @@ from classes.players import Player, getPlayer
 # Custom modules
 import modules.config as cfg
 from modules.enumerations import PlayerStatus
-from modules.display import channelSend, send, isAlNum
-from modules.exceptions import UnexpectedError, ElementNotFound, CharNotFound, CharInvalidWorld, CharMissingFaction
+from modules.display import channelSend, send
+from modules.tools import isAlNum
+from modules.exceptions import UnexpectedError, ElementNotFound, CharNotFound, CharInvalidWorld, CharMissingFaction, CharAlreadyExists
 from modules.database import update as dbUpdate
 
 
@@ -39,11 +40,12 @@ class registerCog(commands.Cog, name='register'):
         return ctx.channel.id == cfg.discord_ids['register']
 
 
-
-
     @commands.command(aliases=['r'])
     @commands.guild_only()
     async def register(self, ctx, *args):
+        if len(ctx.message.mentions) != 0: # Don't want a mention here
+            await send("REG_INVALID",ctx)
+            return
         try:
             player = getPlayer(ctx.author.id)
         except ElementNotFound:
@@ -52,6 +54,20 @@ class registerCog(commands.Cog, name='register'):
 
         msg = await _register(player, ctx, args)
 
+    @commands.command()
+    @commands.guild_only()
+    async def notify(self, ctx):
+        member = ctx.author
+        notify = member.guild.get_role(cfg.discord_ids["notify_role"])
+        registered = member.guild.get_role(cfg.discord_ids["registered_role"])
+        if notify in member.roles:
+            await member.add_roles(registered)
+            await member.remove_roles(notify)
+            await send("NOTIFY_REMOVED", ctx)
+        else:
+            await member.add_roles(notify)
+            await member.remove_roles(registered)
+            await send("NOTIFY_ADDED", ctx)
 
 def setup(client):
     client.add_cog(registerCog(client))
@@ -105,6 +121,9 @@ async def _register(player, ctx, args):
             return
         except CharMissingFaction as e:
             await send("REG_MISSING_FACTION",ctx,e.faction)
+            return
+        except CharAlreadyExists as e:
+            await send("REG_ALREADY_EXIST",ctx,e.char, e.id)
             return
         except UnexpectedError:
             await send("UNKNOWN_ERROR",ctx,"Reg error, check logs")

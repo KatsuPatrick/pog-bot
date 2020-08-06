@@ -115,6 +115,10 @@ def _addMainHandlers(client):
                 except ElementNotFound: # if new player
                     Player(payload.member.name, payload.member.id) # create a new profile
                     await channelSend("REG_RULES", cfg.discord_ids["register"], payload.member.mention) # they can now register
+                    registered = payload.member.guild.get_role(cfg.discord_ids["registered_role"])
+                    info = payload.member.guild.get_role(cfg.discord_ids["info_role"])
+                    await payload.member.add_roles(registered)
+                    await payload.member.remove_roles(info)
 
             await rulesMsg.remove_reaction(payload.emoji, payload.member) # In any case remove the reaction, message is to stay clean
 
@@ -156,11 +160,8 @@ def _addMainHandlers(client):
 
 # TODO: testing, to be removed
 def _test(client):
-    from test2 import launch
-    @client.command()
-    @commands.guild_only()
-    async def x(ctx):
-        await launch()
+    from test2 import testHand
+    testHand(client)
 
 
 
@@ -179,7 +180,7 @@ def main(launchStr=""):
     # Remove default help
     client.remove_command('help')
 
-    # Initialise db and get all the registered users and all maps from it
+    # Initialise db and get all t=xhe registered users and all maps from it
     dbInit(cfg.database)
     getAllPlayers()
     getAllMaps()
@@ -195,7 +196,8 @@ def main(launchStr=""):
 
     # Add main handlers
     _addMainHandlers(client)
-    #_test(client)
+    if launchStr=="_test":
+        _test(client)
 
     # Add all cogs
     client.load_extension('cogs.lobby')
@@ -210,4 +212,5 @@ def main(launchStr=""):
 if __name__ == "__main__":
     # execute only if run as a script
     # Use main() for production
+    #main("_test")
     main()

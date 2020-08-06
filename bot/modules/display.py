@@ -25,6 +25,7 @@ from enum import Enum
 # Custom modules
 import modules.config as cfg
 from modules.enumerations import MatchStatus
+from modules.tools import isAdmin, isAlNum
 
 _client = None
 
@@ -61,33 +62,7 @@ async def edit(stringName, ctx, *args, **kwargs):
     """
     return await _StringEnum[stringName].value.display(ctx, True,  *args, **kwargs)
 
-def isAlNum(string):
-    """ Little utility to check if a string contains only letters and numbers (a-z,A-Z,0-9)
-        Parameters
-        ----------
-        string : str
-            The string to be processed
-
-        Returns
-        -------
-        isAlphaNum : boolean
-            Result
-    """
-    for i in string.lower():
-        cond = ord(i) >= ord('a') and ord(i) <= ord('z')
-        cond = cond or (ord(i) >= ord('0') and ord(i) <= ord('9'))
-        if not cond:
-            return False
-    return True
-
 ## PRIVATE:
-
-# Check if user is admin
-def _isAdmin(user):
-    for role in user.roles:
-        if role.id == cfg.discord_ids["admin_role"]:
-            return True
-    return False
 
 ## Embed functions
 
@@ -119,7 +94,7 @@ def _lobbyHelp(msg):
                           '`=l` - Leave the lobby\n'
                           '`=q` - See the current lobby'
                     , inline=False)
-    if _isAdmin(msg.author):
+    if isAdmin(msg.author):
         embed.add_field(name="Staff Commands",
                         value='`=clear` - Clear the lobby',
                         inline=False)
@@ -165,7 +140,7 @@ def _matchHelp(msg):
                             '`=p VS`/`NC`/`TR` - Pick a faction\n'
                             '`=ready` - To toggle the ready status of your team',
                     inline=False)
-    if _isAdmin(msg.author):
+    if isAdmin(msg.author):
         embed.add_field(name="Staff Commands",
                         value = '`=clear` - Clear the match\n'
                                 '`=map base name` - Select a map',
@@ -246,7 +221,7 @@ def _teamUpdate(arg, match):
     for tm in match.teams:
         value = ""
         name = ""
-        if tm.captain.isTurn and match.status != MatchStatus.IS_WAITING:
+        if tm.captain.isTurn and match.status in (MatchStatus.IS_FACTION, MatchStatus.IS_PICKING):
             value = f"Captain **[pick]**: {tm.captain.mention}\n"
         else:
             value = f"Captain: {tm.captain.mention}\n"
@@ -326,9 +301,10 @@ class _StringEnum(Enum):
     REG_IS_REGISTERED_NOA = _Message("You are already registered without a Jaeger account! If you have your own account, please re-register with your Jaeger characters.")
     REG_HELP = _Message("Registration help:",embed=_registerHelp)
     REG_NO_ACCOUNT = _Message("You successfully registered without a Jaeger account!")
-    REG_INVALID = _Message("Invalid command!",embed=_registerHelp)
+    REG_INVALID = _Message("Invalid registration!",embed=_registerHelp)
     REG_CHAR_NOT_FOUND = _Message("Invalid registration! Character `{}` is not valid!",embed=_registerHelp)
     REG_NOT_JAEGER = _Message("Invalid registration! Character `{}` doesn't belong to Jaeger!",embed=_registerHelp)
+    REG_ALREADY_EXIST = _Message("Invalid registration! Character `{}` is already registered by <@{}>!")
     REG_MISSING_FACTION = _Message("Invalid registration! Can't find a {} character in your list!",embed=_registerHelp)
     REG_UPDATE_OWN = _Message("You successfully updated your profile with the following Jaeger characters: `{}`, `{}`, `{}`")
     REG_UPDATE_NOA = _Message("You successfully removed your Jaeger characters from your profile.")
@@ -356,7 +332,7 @@ class _StringEnum(Enum):
     PK_NO_LOBBIED = _Message("You must first queue and wait for a match to begin. Check <#{}>")
     PK_WAIT_FOR_PICK = _Message("You can't pick! Wait for a Team Captain to pick you")
     PK_WRONG_CHANNEL = _Message("You are in the wrong channel! Check <#{}> instead")
-    PK_NOT_TURN = _Message("It's not your turn to pick!")
+    PK_NOT_TURN = _Message("It's not your turn!")
     PK_NOT_CAPTAIN = _Message("You are not Team Captain!")
     PK_SHOW_TEAMS = _Message("Match status:",embed=_teamUpdate)
     PK_HELP = _Message("Picking help:", embed=_matchHelp)
@@ -372,6 +348,8 @@ class _StringEnum(Enum):
     PK_FACTION_ALREADY = _Message("Faction already picked by the other team!")
     PK_FACTION_OK_NEXT = _Message("{} chose {}! {} pick a faction!", ping=False)
     PK_FACTION_NOT_PLAYER = _Message("Pick a faction, not a player!", embed=_matchHelp)
+    PK_WAIT_MAP = _Message("{} {} Pick a map!", ping=False, embed=_teamUpdate)
+    PK_MAP_OK_CONFIRM = _Message("Picked {}! {} confirm with `=p confirm` if you agree")
 
     EXT_NOT_REGISTERED = _Message("You are not registered! Check <#{}>")
     UNKNOWN_ERROR = _Message("Something unexpected happened! Please try again or contact staff if it keeps happening.\nDetails:*{}*")
@@ -402,6 +380,8 @@ class _StringEnum(Enum):
     MATCH_MAP_SELECTED = _Message("Successfully selected **{}**")
     MATCH_ROUND_OVER = _Message("{}\n{}\nRound {} is over!")
     MATCH_OVER = _Message("The match is over!\nClearing channel...")
+    MATCH_ALREADY = _Message("The match is already started!")
+    MATCH_SWAP = _Message("Swap sundy placement for the next round!")
 
     MAP_HELP = _Message("Here is how to choose a map:", embed = _mapHelp)
     MAP_TOO_MUCH = _Message("Too many maps found! Try to be more precise")
@@ -416,4 +396,13 @@ class _StringEnum(Enum):
     ACC_SENDING = _Message("Loading Jaeger accounts...")
     ACC_OVER = _Message("Match is over, please log out of your Jaeger account!")
 
+    NOTIFY_REMOVED = _Message("You left Notify!")
+    NOTIFY_ADDED = _Message("You joined Notify!")
+
     NOT_CODED = _Message("The rest is not yet coded, work in progress. Clearing match...")
+
+    RM_MENTION_ONE = _Message("Invalid request! Mention one player to be removed!")
+    RM_NOT_IN_DB = _Message("Can't find this player in the database!")
+    RM_OK = _Message("Player successfully removed from the system!")
+    RM_IN_MATCH = _Message("Can't remove a player who is in match!")
+    RM_LOBBY = _Message("{} have been removed by staff!",embed=_lobbyList)
