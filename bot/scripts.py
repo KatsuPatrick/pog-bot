@@ -1,17 +1,21 @@
 from gspread import service_account
 from numpy import array
-import bot.modules.config as cfg
-from bot.modules.database import _update, init as dbInit
-from bot.classes.players import Player
-from bot.modules.database import forceBasesUpdate
+import modules.config as cfg
+from modules.database import _update, init as dbInit
+from classes.players import Player
+from modules.database import forceBasesUpdate
 import requests
 import json
 import asyncio
 
+LAUNCHSTR = "_test" # this should be empty if your files are config.cfg and client_secret.json
+
+cfg.getConfig(f"config{LAUNCHSTR}.cfg")
+dbInit(cfg.database)
 
 def pushAccounts():
     # Get all accounts
-    gc = service_account(filename='client_secret.json')
+    gc = service_account(filename=f'client_secret{LAUNCHSTR}.json')
     sh = gc.open_by_key(cfg.database["accounts"])
     rawSheet = sh.get_worksheet(1)
     visibleSheet = sh.get_worksheet(0)
@@ -30,7 +34,7 @@ def pushAccounts():
 
 
     for acc in accounts:
-        p = Player(f"_PIL_ACC_{acc}", int(acc))
+        p = Player(f"_POG_ACC_{acc}", int(acc))
         pList.append(p)
         print(acc)
         charList=[f"PSBx{acc}VS", f"PSBx{acc}TR", f"PSBx{acc}NC"]
@@ -38,6 +42,7 @@ def pushAccounts():
         loop.run_until_complete(p._addCharacters(charList))
         _update(p)
     loop.close()
+
 
 
 def getAllMapsFromApi():

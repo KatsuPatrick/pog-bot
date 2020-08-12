@@ -1,3 +1,30 @@
+# v1.0.6:
+- Fixed critical bug in account distribution (every account could only be used 1 time)
+- Match lenght is now 10 minutes
+- ALL commands are now case insensitive (it was the case of only a few)
+- Fixed a bug when lobby is stuck but a match spot becomes available
+- "Round 2 is over" message is no longer displayed twice
+- Staff can now properly cancel an ongoing match
+
+# v1.0.5:
+- Added =pog command for version checking and locking/unlocking the bot
+- Now ignoring messages posted in wrong channels
+- Added help regarding notify feature
+- Added link to Jaeger Calendar
+
+# v1.0.4:
+- Fixed a bug when several matches are happening at the same time
+- Customized discord.ext.tasks as lib.tasks to have better flexibility on tasks
+- Various fixes
+
+# v1.0.3:
+- It is no longer possible to register with a character that is already registered
+- Team captains can now select a map
+- Added =confirm command for Team Captains to agree on a map
+- Added role updates when agreeing with the rules
+- Added notify feature
+- Added =unregister @player to remove a player from the system (including db)
+
 # v1.0.2:
 - Now properly checking if player have no missing faction when registering with a Jaeger char
 - Lobby size can now be modified from the config file

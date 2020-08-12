@@ -15,7 +15,10 @@ discord_ids = {
     "results" : 0,
     "rules" : 0,
     "rules_msg" : 0,
-    "admin_role" : 0
+    "admin_role" : 0,
+    "info_role" : 0,
+    "registered_role" : 0,
+    "notify_role" : 0
     }
 
 ## General
@@ -27,7 +30,9 @@ general = {
     "lobby_size" : 0
     }
 
-AFK_TIME = 15 # minutes
+AFK_TIME = 20 # minutes
+ROUND_LENGHT = 10 # minutes
+VERSION = "0"
 
 factions = {
     1 : "VS",
@@ -143,6 +148,13 @@ def getConfig(file):
             database["collections"][key] = config['Collections'][key]
         except KeyError:
             _errorMissing(key, 'Collections', file)
+
+
+    # Version
+    with open('../CHANGELOG.md', 'r', encoding='utf-8') as txt:
+        txt_str=txt.readline()
+    global VERSION
+    VERSION = txt_str[3:-2] # Extracts "X.X.X" from string "# vX.X.X:" in a lazy way
 
 
 def _checkSection(config, section, file):

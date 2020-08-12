@@ -9,13 +9,13 @@
 from gspread import service_account
 from numpy import array, vstack
 from datetime import datetime as dt
-from discord.ext import tasks
+from lib import tasks
 from asyncio import get_event_loop
 from concurrent.futures import ThreadPoolExecutor
 
 # Custom modules
 import modules.config as cfg
-from modules.display import channelSend, privateSend, edit
+from modules.display import channelSend, privateSend, edit, remReaction
 from modules.exceptions import AccountsNotEnough
 
 X_OFFSET=3
@@ -148,7 +148,10 @@ class AccountHander():
             if acc.message != None:
                 acc.isDestroyed = True
                 await edit("ACC_UPDATE", acc.message, account=acc)
-                await privateSend("ACC_OVER", acc.aPlayer.id)
+                if acc.isValidated:
+                    await privateSend("ACC_OVER", acc.aPlayer.id)
+                else:
+                    await remReaction(acc.message)
 
 
     def __updateSheet(self):
@@ -169,6 +172,7 @@ class AccountHander():
         else:
             vRow[1] = dt.utcfromtimestamp(self.__handingStamp).strftime("%Y-%m-%d %H:%M UTC")
         closingStamp =  int(dt.timestamp(dt.now())) + QUIT_DELAY
+        type(self)._sheetTab[self.__yCoord-1][2] = str(closingStamp)
         row[2] = str(closingStamp)
         vRow[2] = dt.utcfromtimestamp(closingStamp).strftime("%Y-%m-%d %H:%M UTC")
         for acc in self.__freeAccounts:

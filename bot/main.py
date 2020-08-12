@@ -22,6 +22,8 @@ from modules.spam import isSpam, unlock
 from modules.exceptions import ElementNotFound
 from modules.database import init as dbInit, getAllPlayers, getAllMaps
 from modules.enumerations import PlayerStatus
+from modules.tools import isAdmin
+from modules.loader import init as cogInit, isAllLocked, unlockAll
 
 # Modules for the custom classes
 from matches import onPlayerInactive, onPlayerActive, init as matchesInit
@@ -55,8 +57,15 @@ def _addMainHandlers(client):
         if isinstance(message.channel, DMChannel): # if dm, print in console and ignore the message
             print(message.author.name + ": " +message.content)
             return
+        if message.channel.id not in (cfg.discord_ids["lobby"], cfg.discord_ids["register"], *cfg.discord_ids["matches"]):
+            return
+        if isAllLocked():
+            if not isAdmin(message.author):
+                return
+            # Admins can still use bot when locked
         if await isSpam(message):
             return
+        message.content = message.content.lower()
         await client.process_commands(message) # if not spam, process
         await sleep(0.5)
         unlock(message.author.id) # call finished, we can release user
@@ -77,6 +86,9 @@ def _addMainHandlers(client):
     @client.event
     async def on_command_error(ctx, error):
         if isinstance(error, commands.CommandNotFound): # Unknown command
+            if isAllLocked():
+                await send("BOT_IS_LOCKED", ctx)
+                return
             await send("INVALID_COMMAND",ctx)
             return
         if isinstance(error, commands.errors.CheckFailure): # Unauthorized command
@@ -107,6 +119,9 @@ def _addMainHandlers(client):
     async def on_raw_reaction_add(payload): # Has to be on_raw cause the message already exists when the bot starts
         if payload.member == None or payload.member.bot: # If bot, do nothing
             return
+        if isAllLocked():
+            if not isAdmin(payload.member):
+                return
         if payload.message_id == cfg.discord_ids["rules_msg"]: # reaction to the rule message?
             global rulesMsg
             if str(payload.emoji) == "✅":
@@ -115,6 +130,10 @@ def _addMainHandlers(client):
                 except ElementNotFound: # if new player
                     Player(payload.member.name, payload.member.id) # create a new profile
                     await channelSend("REG_RULES", cfg.discord_ids["register"], payload.member.mention) # they can now register
+                    registered = payload.member.guild.get_role(cfg.discord_ids["registered_role"])
+                    info = payload.member.guild.get_role(cfg.discord_ids["info_role"])
+                    await payload.member.add_roles(registered)
+                    await payload.member.remove_roles(info)
 
             await rulesMsg.remove_reaction(payload.emoji, payload.member) # In any case remove the reaction, message is to stay clean
 
@@ -127,7 +146,7 @@ def _addMainHandlers(client):
             return
         if player.hasOwnAccount:
             return
-        if player.status == PlayerStatus.IS_PICKED:
+        if player.status != PlayerStatus.IS_PLAYING:
             return
         if player.active.account == None:
             return
@@ -156,11 +175,8 @@ def _addMainHandlers(client):
 
 # TODO: testing, to be removed
 def _test(client):
-    from test2 import launch
-    @client.command()
-    @commands.guild_only()
-    async def x(ctx):
-        await launch()
+    from test2 import testHand
+    testHand(client)
 
 
 
@@ -179,7 +195,7 @@ def main(launchStr=""):
     # Remove default help
     client.remove_command('help')
 
-    # Initialise db and get all the registered users and all maps from it
+    # Initialise db and get all t=xhe registered users and all maps from it
     dbInit(cfg.database)
     getAllPlayers()
     getAllMaps()
@@ -195,13 +211,12 @@ def main(launchStr=""):
 
     # Add main handlers
     _addMainHandlers(client)
-    #_test(client)
+    if launchStr=="_test":
+        _test(client)
 
     # Add all cogs
-    client.load_extension('cogs.lobby')
-    client.load_extension('cogs.register')
-    client.load_extension('cogs.matches')
-    client.load_extension('cogs.admin')
+    cogInit(client)
+    unlockAll(client)
 
     # Run server
     client.run(cfg.general["token"])
@@ -210,4 +225,5 @@ def main(launchStr=""):
 if __name__ == "__main__":
     # execute only if run as a script
     # Use main() for production
-    main()
+    main("_test")
+    #main()

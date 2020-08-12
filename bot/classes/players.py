@@ -6,9 +6,9 @@ import enum
 # Custom modules
 import modules.config as cfg
 from modules.asynchttp import request as httpRequest
-from modules.exceptions import UnexpectedError, ElementNotFound, StatusNotAllowed, CharNotFound, CharInvalidWorld, CharMissingFaction
+from modules.exceptions import UnexpectedError, ElementNotFound, StatusNotAllowed, CharNotFound, CharInvalidWorld, CharMissingFaction, CharAlreadyExists
 from modules.enumerations import PlayerStatus
-from discord.ext import tasks
+from lib import tasks
 
 WORLD_ID = 19 # Jaeger ID
 
@@ -20,12 +20,21 @@ scoring =	{
 }
 
 _allPlayers = dict()
+_namesChecking=[dict(),dict(),dict()] # to store VS, NC and TR names to check for duplicates
 
 def getPlayer(id):
     player = _allPlayers.get(id)
     if player == None:
         raise ElementNotFound(id)
     return player
+
+def removePlayer(p):
+    if p.id not in _allPlayers:
+        raise ElementNotFound(p.id)
+    if p.hasOwnAccount:
+        for i in range(len(_namesChecking)):
+            del _namesChecking[i][p.igIds[i]]
+    del _allPlayers[p.id]
 
 class Player():
     """ Basic player class, every registered user matches a Player object contained in the dictionary
@@ -51,6 +60,8 @@ class Player():
         obj._igNames = data["igNames"]
         obj._igIds = data["igIds"]
         obj._hasOwnAccount = data["hasOwnAccount"]
+        for i in range(len(obj._igIds)):
+            _namesChecking[i][obj._igIds[i]] = obj
         return obj
 
     @property
@@ -58,12 +69,12 @@ class Player():
         return self._active
 
     def clean(self):
+        self._status = PlayerStatus.IS_REGISTERED
         self._match = None
         self._active = None
         if not self._hasOwnAccount:
             self._igNames = ["N/A", "N/A", "N/A"]
             self._igIds = [0,0,0]
-        self._status = PlayerStatus.IS_REGISTERED
 
     @property
     def name(self):
@@ -72,6 +83,10 @@ class Player():
     @property
     def id(self):
         return self._id
+    
+    @property
+    def mention(self):
+        return f"<@{self._id}>" 
 
     @property
     def rank(self):
@@ -169,7 +184,13 @@ class Player():
                         raise CharInvalidWorld(jdata["character_list"][0]["name"]["first"])
                     else:
                         faction = int(jdata["character_list"][0]["faction_id"])
-                        newIds[faction-1] = jdata["character_list"][0]["character_id"]
+                        currId = jdata["character_list"][0]["character_id"]
+                        currName = jdata["character_list"][0]["name"]["first"]
+                        if currId in _namesChecking[faction-1]:
+                            p = _namesChecking[faction-1][currId]
+                            if p != self:
+                                raise CharAlreadyExists(currName, p.id)
+                        newIds[faction-1] = currId
                         updated = updated or newIds[faction-1] != self._igIds[faction-1]
                         newNames[faction-1] = jdata["character_list"][0]["name"]["first"]
                 except IndexError:
@@ -182,13 +203,12 @@ class Player():
         if updated:
             self._igIds = newIds.copy()
             self._igNames = newNames.copy()
+            for i in range(len(self._igIds)):
+                _namesChecking[i][self._igIds[i]] = self
         return updated
 
-    @tasks.loop(minutes=cfg.AFK_TIME, count=2)
+    @tasks.loop(minutes=cfg.AFK_TIME,delay=1, count=2)
     async def onInactive(self, fct): # when inactive for cfg.AFK_TIME, execute fct
-        if self.onInactive.hasJustBecome:
-            self.onInactive.hasJustBecome = False
-            return
         await fct(self)
 
 
@@ -241,7 +261,7 @@ class ActivePlayer:
 
     @property
     def mention(self):
-        return f"<@{self.__player.id}>"
+        return self.__player.mention
 
     @property
     def faction(self):

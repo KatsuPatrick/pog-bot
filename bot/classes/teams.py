@@ -46,12 +46,12 @@ class Team:
 
     @property
     def playerPings(self):
-        pings = [f"<@{p.id}>" for p in self.__players[1:]]
+        pings = [p.mention for p in self.__players[1:]]
         return pings
 
     @property
     def allPings(self):
-        pings = [f"<@{p.id}>" for p in self.__players]
+        pings = [p.mention for p in self.__players]
         return " ".join(pings)
 
     @property
@@ -64,8 +64,8 @@ class Team:
 
     def addPlayer(self, cls, player):
         active = cls(player, self)
-        active.status = PlayerStatus.IS_PICKED
         self.__players.append(active)
+        active.status = PlayerStatus.IS_PICKED
 
     def matchReady(self):
         for p in self.__players:

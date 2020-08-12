@@ -6,6 +6,7 @@
 # Others:
 from logging import error
 from datetime import datetime as dt
+from datetime import timezone as tz
 
 class CharNotFound(Exception):
     def __init__(self, char):
@@ -16,6 +17,12 @@ class CharInvalidWorld(Exception):
     def __init__(self, char):
         self.char = char
         super().__init__(f"Character in invalid world: {char}")
+
+class CharAlreadyExists(Exception):
+    def __init__(self, char, id):
+        self.char = char
+        self.id = id # id of player who already registered the char
+        super().__init__(f"Character {char} is already registered!")
 
 class AccountNotFound(Exception):
     def __init__(self, id):
@@ -32,7 +39,7 @@ class UnexpectedError(Exception):
     def __init__(self, msg):
         self.message = "Encountered unexpected error: "+msg
         self.reason = msg
-        date = dt.now()
+        date = dt.now(tz.utc)
         error(date.strftime("%Y-%m-%d %H:%M:%S %z ") + self.message)
         super().__init__(self.message)
 

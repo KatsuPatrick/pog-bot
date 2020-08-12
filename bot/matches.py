@@ -6,11 +6,11 @@ from datetime import datetime as dt
 
 from classes.teams import Team #ok
 from classes.players import TeamCaptain, ActivePlayer #ok
-from classes.maps import MapSelection, getMapSelection #ok
+from classes.maps import MapSelection #ok
 from classes.accounts import AccountHander #ok
 
 from random import choice as randomChoice
-from discord.ext import tasks
+from lib import tasks
 from asyncio import sleep
 
 _lobbyList = list()
@@ -19,7 +19,7 @@ _allMatches = dict()
 
 def getMatch(id):
     if id not in _allMatches:
-        raise UnexpectedError("Unknow match channel!")
+        raise ElementNotFound(id) # should never happen
     return _allMatches[id]
 
 
@@ -37,7 +37,7 @@ def getLobbyLen():
     return len(_lobbyList)
 
 def getAllNamesInLobby():
-    names = [f"<@{p.id}>" for p in _lobbyList]
+    names = [p.mention for p in _lobbyList]
     return names
 
 def removeFromLobby(player):
@@ -45,6 +45,11 @@ def removeFromLobby(player):
     _lobbyList.remove(player)
     _lobbyStuck = False
     player.status = PlayerStatus.IS_REGISTERED
+
+def _onMatchFree():
+    if len(_lobbyList) == cfg.general["lobby_size"]:
+        startMatchFromFullLobby.start()
+
 
 @tasks.loop(count=1)
 async def startMatchFromFullLobby():
@@ -63,7 +68,6 @@ async def startMatchFromFullLobby():
 
 def onPlayerInactive(player):
     if player.status == PlayerStatus.IS_LOBBIED:
-        player.onInactive.hasJustBecome = True
         player.onInactive.start(onInactiveConfirmed)
 
 def onPlayerActive(player):
@@ -72,7 +76,7 @@ def onPlayerActive(player):
 
 async def onInactiveConfirmed(player):
     removeFromLobby(player)
-    await channelSend("LB_WENT_INACTIVE", cfg.discord_ids["lobby"], f"<@{player.id}>", namesInLobby=getAllNamesInLobby())
+    await channelSend("LB_WENT_INACTIVE", cfg.discord_ids["lobby"], player.mention, namesInLobby=getAllNamesInLobby())
 
 
 def clearLobby():
@@ -102,7 +106,7 @@ class Match():
         self.__players = dict()
         self.__status = MatchStatus.IS_FREE
         self.__teams = [None, None]
-        self.__map = None
+        self.__mapSelector = None
         self.__number = 0
         _allMatches[id] = self
         self.__accounts = None
@@ -134,7 +138,7 @@ class Match():
 
     @property
     def playerPings(self):
-        pings = [f"<@{p.id}>" for p in self.__players.values()]
+        pings = [p.mention for p in self.__players.values()]
         return pings
 
     def _setPlayerList(self, pList):
@@ -162,9 +166,21 @@ class Match():
             return self.__teams[1].captain
         return other.captain
 
+    def confirmMap(self):
+        self.__mapSelector.confirm()
+        self.__ready.start()
+
+    def pickMap(self, captain):
+        if self.__mapSelector.status == SelStatus.IS_SELECTED:
+            captain.isTurn = False
+            other = self.__teams[captain.team.id-1]
+            other.captain.isTurn = True
+            return other.captain
+        return captain
+
     @tasks.loop(count=1)
     async def __pingLastPlayer(self, team, p):
-        await channelSend("PK_LAST", self.__id, f"<@{p.id}>", team.name)
+        await channelSend("PK_LAST", self.__id, p.mention, team.name)
 
     @tasks.loop(count=1)
     async def __playerPickOver(self, picker):
@@ -187,8 +203,13 @@ class Match():
     def onTeamReady(self, team):
         notReady = list()
         for p in team.players:
-            if not p.hasOwnAccount and not p.account.isValidated:
-                notReady.append(p.mention)
+            if p.hasOwnAccount:
+                continue
+            if p.account == None:
+                print(f"Debug: {p.name} has no account")
+            if p.account.isValidated:
+                continue
+            notReady.append(p.mention)
         if len(notReady) != 0:
             return notReady
         team.captain.isTurn = False
@@ -202,18 +223,30 @@ class Match():
 
     @tasks.loop(count=1)
     async def __findMap(self):
-        if False and self.__map == None: # Disabling auto map
-            try:
-                sel = getMapSelection(self.__id)
-            except ElementNotFound:
-                sel = MapSelection(self.__id)
-            sel.selectFromIdList(cfg.PIL_MAPS_IDS)
-            if sel.status not in (SelStatus.IS_SELECTED, SelStatus.IS_SELECTION):
-                await channelSend("UNKNOWN_ERROR", self.__id, "Can't find a map at random!")
-                return
-            self.__map = randomChoice(sel.selection)
-        if self.__map != None:
+        # LEGACY CODE
+        # Disabling map at random:
+        # if self.__map == None:
+        #     try:
+        #         sel = getMapSelection(self.__id)
+        #     except ElementNotFound:
+        #         sel = MapSelection(self.__id)
+        #     sel.selectFromIdList(cfg.PIL_MAPS_IDS)
+        #     if sel.status not in (SelStatus.IS_SELECTED, SelStatus.IS_SELECTION):
+        #         await channelSend("UNKNOWN_ERROR", self.__id, "Can't find a map at random!")
+        #         return
+        #     self.__map = randomChoice(sel.selection)
+        for tm in self.__teams:
+            tm.captain.isTurn = True
+        if self.__mapSelector.status == SelStatus.IS_CONFIRMED:
             await channelSend("MATCH_MAP_AUTO", self.__id, self.__map.name)
+            self.__ready.start()
+            return
+        captainPings = [tm.captain.mention for tm in self.__teams]
+        self.__status = MatchStatus.IS_MAPPING
+        await channelSend("PK_WAIT_MAP", self.__id, *captainPings)
+
+    @tasks.loop(count=1)
+    async def __ready(self):
         for tm in self.__teams:
             tm.matchReady()
             tm.captain.isTurn = True
@@ -227,23 +260,21 @@ class Match():
         self.__status = MatchStatus.IS_WAITING
         await channelSend("MATCH_CONFIRM", self.__id, *captainPings, match=self)
 
-    @tasks.loop(seconds=10, count=2)
+    @tasks.loop(minutes=cfg.ROUND_LENGHT, delay=1, count=2)
     async def __onMatchOver(self):
-        if self.__onMatchOver.hasJustBecome:
-            self.__onMatchOver.hasJustBecome = False
-            return
         playerPings = [tm.allPings for tm in self.__teams]
         await channelSend("MATCH_ROUND_OVER", self.__id, *playerPings, self.roundNo)
         for tm in self.__teams:
             tm.captain.isTurn = True
         if self.roundNo < 2:
+            await channelSend("MATCH_SWAP", self.__id)
             self.__status = MatchStatus.IS_WAITING
             captainPings = [tm.captain.mention for tm in self.__teams]
             await channelSend("MATCH_CONFIRM", self.__id, *captainPings, match=self)
             return
         await channelSend("MATCH_OVER", self.__id)
+        self.__status = MatchStatus.IS_RUNNING
         await self.clear()
-        await channelSend("MATCH_CLEARED", self.__id)
 
     @tasks.loop(count=1)
     async def __startMatch(self):
@@ -257,17 +288,14 @@ class Match():
         await channelSend("MATCH_STARTED", self.__id, *playerPings, self.roundNo)
         self.__roundsStamps.append(int(dt.timestamp(dt.now())))
         self.__status = MatchStatus.IS_PLAYING
-        self.__onMatchOver.hasJustBecome = True
         self.__onMatchOver.start()
-        # await channelSend("NOT_CODED", self.__id)
-        # await self.clear()
-        # await channelSend("MATCH_CLEARED", self.__id)
 
 
     @tasks.loop(count=1)
     async def _launch(self):
         await channelSend("MATCH_INIT", self.__id, " ".join(self.playerPings))
         self.__accounts = AccountHander(self)
+        self.__mapSelector = MapSelection(self)
         for i in range(len(self.__teams)):
             self.__teams[i] = Team(i, f"Team {i+1}", self)
             key = randomChoice(list(self.__players))
@@ -278,28 +306,44 @@ class Match():
 
     async def clear(self):
         """ Clearing match and base player objetcts
-        Team and ActivePlayer objetcs should garbage collected, nothing is referencing them anymore"""
+        Team and ActivePlayer objects should get garbage collected, nothing is referencing them anymore"""
+
+        if self.status == MatchStatus.IS_PLAYING:
+            self.__onMatchOver.cancel()
+            playerPings = [tm.allPings for tm in self.__teams]
+            await channelSend("MATCH_ROUND_OVER", self.__id, *playerPings, self.roundNo)
+            await channelSend("MATCH_OVER", self.__id)
+
+        # Updating account sheet with current match
         await self.__accounts.doUpdate()
-        self.__accounts = None
+
+        # Clean players if left in the list
         for p in self.__players.values():
             p.clean()
-        self.__players.clear()
+
+        # Clean players if in teams
         for tm in self.__teams:
             for p in tm.players:
                 p.clean()
-        self.__map = None
+        
+        # Clean mapSelector
+        self.__mapSelector.clean()
+        
+        # Release all objects:
+        self.__accounts = None
+        self.__mapSelector = None
         self.__teams = [None, None]
         self.__roundsStamps.clear()
+        self.__players.clear()
+        await channelSend("MATCH_CLEARED", self.__id)
         self.__status = MatchStatus.IS_FREE
+        _onMatchFree()
 
 
     @property
     def map(self):
-        return self.__map
-
-    @map.setter
-    def map(self, map):
-        self.__map = map
+        if self.__mapSelector.status == SelStatus.IS_CONFIRMED:
+            return self.__mapSelector.map
 
     # TODO: testing only
     @property
@@ -313,5 +357,9 @@ class Match():
         if self.__status in (MatchStatus.IS_STARTING, MatchStatus.IS_WAITING):
             return len(self.__roundsStamps)+1
         return 0
+    
+    @property
+    def mapSelector(self):
+        return self.__mapSelector
 
 
